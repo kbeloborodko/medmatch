@@ -3,8 +3,6 @@ import type { Medication } from '../services/medicationService'
 
 interface AnaloguesTableProps {
   analogues: Medication[]
-  destinationCountry: string
-  sourceCountry: string
 }
 
 type SortField = 'name' | 'genericName' | 'manufacturer' | 'strength' | 'availability'
@@ -15,39 +13,28 @@ interface AnalogueWithConfidence extends Medication {
   matchType: 'exact' | 'partial' | 'region-specific'
 }
 
-export const AnaloguesTable: React.FC<AnaloguesTableProps> = ({ analogues, destinationCountry, sourceCountry }) => {
+export const AnaloguesTable: React.FC<AnaloguesTableProps> = ({ analogues }) => {
   const [sortField, setSortField] = useState<SortField>('name')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [filterAvailability, setFilterAvailability] = useState<string>('all')
 
   // Calculate confidence and match type for each analogue
   const analoguesWithConfidence = useMemo((): AnalogueWithConfidence[] => {
-    console.log('Processing analogues for destination:', destinationCountry)
-    console.log('Total analogues to process:', analogues.length)
-    
     return analogues.map(analogue => {
-      let confidence = 0.5 // Base confidence
-      let matchType: 'exact' | 'partial' | 'region-specific' = 'partial'
+      let confidence = 0.7 // Base confidence
+      let matchType: 'exact' | 'partial' | 'region-specific' = 'exact'
 
       // Check if this is a region-specific analogue by ID pattern and country
       const isRegionSpecific = (analogue.id.includes('eu-') && analogue.country === 'EU') || 
-                              (analogue.id.includes('ca-') && analogue.country === 'Canada')
+                              (analogue.id.includes('ca-') && analogue.country === 'CA')
       
       if (isRegionSpecific) {
         confidence = 0.9
         matchType = 'region-specific'
-        console.log('Region-specific analogue found:', analogue.name, 'ID:', analogue.id, 'Country:', analogue.country)
-      } else if (destinationCountry === 'US' && analogue.country === 'US') {
+      } else if (analogue.genericName && analogue.activeIngredient) {
         confidence = 0.8
         matchType = 'exact'
-      } else if (analogue.genericName && analogue.activeIngredient) {
-        // Higher confidence for exact generic name matches
-        confidence = 0.7
-        matchType = 'exact'
       }
-
-      // Log the source of each analogue
-      console.log(`Analogue: ${analogue.name} (${analogue.country}) - ID: ${analogue.id} - Confidence: ${confidence}, Type: ${matchType}`)
 
       return {
         ...analogue,
@@ -55,58 +42,16 @@ export const AnaloguesTable: React.FC<AnaloguesTableProps> = ({ analogues, desti
         matchType
       }
     })
-  }, [analogues, destinationCountry])
+  }, [analogues])
 
   // Sort and filter analogues
   const sortedAndFilteredAnalogues = useMemo(() => {
     let filtered = analoguesWithConfidence
 
-    console.log('=== FILTERING DEBUG ===')
-    console.log('Total analogues before filtering:', filtered.length)
-    console.log('Source country:', sourceCountry)
-    console.log('Destination country:', destinationCountry)
-    
-    // Log all analogue IDs to see what we have
-    filtered.forEach((analogue, index) => {
-      console.log(`Analogue ${index}: ${analogue.name} - ID: "${analogue.id}" - Country: ${analogue.country}`)
-    })
-
-    // If source and destination are the same (e.g., US to US), show all analogues from that country
-    if (sourceCountry === destinationCountry) {
-      console.log('Same country search - showing all analogues from', sourceCountry)
-      filtered = filtered.filter(analogue => analogue.country === sourceCountry)
-    } else {
-      // Cross-country search - only show region-specific analogues for the destination
-      const regionSpecificCount = filtered.filter(analogue => 
-        (analogue.id.includes('eu-') && analogue.country === 'EU') || 
-        (analogue.id.includes('ca-') && analogue.country === 'Canada')
-      ).length
-      
-      console.log(`Region-specific analogues (by ID and country): ${regionSpecificCount}`)
-      
-      // Only show region-specific analogues for the destination country
-      if (regionSpecificCount > 0) {
-        const beforeFilter = filtered.length
-        filtered = filtered.filter(analogue => 
-          (analogue.id.includes('eu-') && analogue.country === 'EU') || 
-          (analogue.id.includes('ca-') && analogue.country === 'Canada')
-        )
-        console.log(`Filtered from ${beforeFilter} to ${filtered.length} region-specific analogues`)
-      } else {
-        // If no region-specific analogues, show empty results
-        console.log('No region-specific analogues found for destination country')
-        filtered = []
-      }
-    }
-
     // Filter by availability
     if (filterAvailability !== 'all') {
-      const beforeAvailabilityFilter = filtered.length
       filtered = filtered.filter(analogue => analogue.availability === filterAvailability)
-      console.log(`Availability filter: ${beforeAvailabilityFilter} -> ${filtered.length}`)
     }
-
-    console.log('=== END FILTERING DEBUG ===')
 
     // Sort analogues
     filtered.sort((a, b) => {
@@ -149,7 +94,7 @@ export const AnaloguesTable: React.FC<AnaloguesTableProps> = ({ analogues, desti
     filtered.sort((a, b) => b.confidence - a.confidence)
 
     return filtered
-      }, [analoguesWithConfidence, sortField, sortDirection, filterAvailability, destinationCountry, sourceCountry])
+  }, [analoguesWithConfidence, sortField, sortDirection, filterAvailability])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

@@ -7,11 +7,11 @@ MedMatch is a modern web application that helps travelers and expats find equiva
 ## ✨ Features
 
 - **🔍 Smart Search**: Search by brand name, generic name, or active ingredient
-- **🌍 Multi-Country Support**: US, EU, and Canada (expanding)
+- **🌍 Multi-Country Support**: US, EU, and Canada with curated OTC medications
 - **💊 OTC Focus**: Safe, over-the-counter medications only
 - **🛡️ Safety First**: Prominent disclaimers and medical warnings
 - **📱 Responsive Design**: Works on all devices
-- **🔌 Real API Integration**: OpenFDA API with fallback mock data
+- **🗄️ Local Database**: Curated database of popular OTC medications
 
 ## 🚀 Getting Started
 
@@ -45,10 +45,10 @@ npm run preview
 - **Tailwind CSS** for styling
 - **Vite** for fast development
 
-### APIs
-- **OpenFDA API** for US drug information
-- **Mock API Service** for development/testing
-- **Modular API layer** for easy expansion
+### Data Source
+- **Local Medication Database**: Curated list of popular OTC medications
+- **Multi-country coverage**: US, EU, and Canada
+- **Reliable and fast**: No external API dependencies
 
 ### Safety & Compliance
 - **Educational purpose only** disclaimers
@@ -63,16 +63,29 @@ npm run preview
 src/
 ├── components/          # React components
 ├── services/           # API services
-│   ├── api.ts         # OpenFDA API integration
+│   ├── api.ts         # Local medication database
 │   └── medicationService.ts  # Business logic
 ├── types/              # TypeScript interfaces
 └── App.tsx            # Main application
 ```
 
-### API Services
-- **DrugAPIService**: Real OpenFDA API integration
-- **MockDrugAPIService**: Development data
-- **MedicationService**: Business logic layer
+### Data Services
+- **LocalMedicationService**: Curated database of popular OTC medications
+- **MedicationService**: Business logic layer with search and filtering
+
+### Database Coverage
+The local database includes popular OTC medications such as:
+- **Pain Relief**: Ibuprofen, Acetaminophen/Paracetamol, Aspirin
+- **Cold & Allergy**: Diphenhydramine, Cetirizine
+- **Digestive Health**: Omeprazole, Ranitidine
+- **Sleep & Relaxation**: Melatonin
+
+Each medication includes:
+- Brand names and generic names
+- Dosage forms and strengths
+- Country-specific availability
+- Safety warnings and interactions
+- Cross-references to analogues
 
 ## 🛡️ Safety & Legal
 
