@@ -1,5 +1,8 @@
 // API service for pharmaceutical data
 const OPENFDA_BASE_URL = 'https://api.fda.gov'
+const EMA_BASE_URL = 'https://www.ema.europa.eu/en/medicines/api'
+const HEALTH_CANADA_BASE_URL = 'https://health-products.canada.ca/api/drug'
+const WHO_BASE_URL = 'https://www.who.int/medicines/regulation/medicines-safety'
 
 export interface OpenFDADrug {
   openfda: {
@@ -34,6 +37,42 @@ export interface OpenFDASearchResponse {
     }
   }
   results: OpenFDADrug[]
+}
+
+// EU/EMA Drug interface
+export interface EMADrug {
+  id: string
+  name: string
+  activeIngredient: string
+  dosageForm: string
+  strength: string
+  country: string
+  brandName?: string
+  genericName?: string
+  manufacturer: string
+  availability: 'otc' | 'prescription' | 'unavailable'
+  lastUpdated: Date
+  warnings?: string[]
+  interactions?: string[]
+  description?: string
+}
+
+// Canadian Drug interface
+export interface CanadianDrug {
+  id: string
+  name: string
+  activeIngredient: string
+  dosageForm: string
+  strength: string
+  country: string
+  brandName?: string
+  genericName?: string
+  manufacturer: string
+  availability: 'otc' | 'prescription' | 'unavailable'
+  lastUpdated: Date
+  warnings?: string[]
+  interactions?: string[]
+  description?: string
 }
 
 export class DrugAPIService {
@@ -167,23 +206,6 @@ export class DrugAPIService {
     return this.makeRequest<OpenFDASearchResponse>(url)
   }
 
-  // Get drug interactions
-  static async getDrugInteractions(drugName: string): Promise<string[]> {
-    try {
-      const searchResponse = await this.searchDrugs(drugName, 1)
-      
-      if (searchResponse.results.length === 0) {
-        return []
-      }
-      
-      const drug = searchResponse.results[0]
-      return drug.drug_interactions || []
-    } catch (error) {
-      console.error('Error fetching drug interactions:', error)
-      return []
-    }
-  }
-
   // Simple test to check if API is working
   static async testBasicAPI(): Promise<void> {
     try {
@@ -234,128 +256,166 @@ export class DrugAPIService {
   }
 }
 
-// Mock API service for development/testing
-export class MockDrugAPIService {
-  private static mockDrugs = [
-    {
-      openfda: {
-        brand_name: ['Tylenol'],
-        generic_name: ['Acetaminophen'],
-        manufacturer_name: ['Johnson & Johnson'],
-        substance_name: ['ACETAMINOPHEN'],
-        dosage_form: ['TABLET'],
-        route: ['ORAL']
-      },
-      active_ingredient: ['ACETAMINOPHEN'],
-      active_ingredients: [{ name: 'ACETAMINOPHEN', strength: '500 MG' }],
-      drug_interactions: ['Alcohol may increase liver damage'],
-      warnings: ['Do not exceed recommended dosage'],
-      description: ['Pain reliever and fever reducer'],
-      clinical_pharmacology: ['Inhibits prostaglandin synthesis']
-    },
-    {
-      openfda: {
-        brand_name: ['Advil'],
-        generic_name: ['Ibuprofen'],
-        manufacturer_name: ['Pfizer'],
-        substance_name: ['IBUPROFEN'],
-        dosage_form: ['TABLET'],
-        route: ['ORAL']
-      },
-      active_ingredient: ['IBUPROFEN'],
-      active_ingredients: [{ name: 'IBUPROFEN', strength: '200 MG' }],
-      drug_interactions: ['May interact with blood thinners'],
-      warnings: ['May cause stomach upset'],
-      description: ['Non-steroidal anti-inflammatory drug'],
-      clinical_pharmacology: ['Inhibits cyclooxygenase enzymes']
-    },
-    {
-      openfda: {
-        brand_name: ['Paracetamol'],
-        generic_name: ['Acetaminophen'],
-        manufacturer_name: ['Various'],
-        substance_name: ['ACETAMINOPHEN'],
-        dosage_form: ['TABLET'],
-        route: ['ORAL']
-      },
-      active_ingredient: ['ACETAMINOPHEN'],
-      active_ingredients: [{ name: 'ACETAMINOPHEN', strength: '500 MG' }],
-      drug_interactions: ['Alcohol may increase liver damage'],
-      warnings: ['Do not exceed recommended dosage'],
-      description: ['Pain reliever and fever reducer'],
-      clinical_pharmacology: ['Inhibits prostaglandin synthesis']
-    }
-  ]
-
-  static async searchDrugs(query: string, limit: number = 10): Promise<OpenFDASearchResponse> {
-    const filteredDrugs = this.mockDrugs.filter(drug => 
-      drug.openfda.brand_name.some(name => 
-        name.toLowerCase().includes(query.toLowerCase())
-      ) ||
-      drug.openfda.generic_name.some(name => 
-        name.toLowerCase().includes(query.toLowerCase())
-      ) ||
-      drug.openfda.substance_name.some(name => 
-        name.toLowerCase().includes(query.toLowerCase())
-      )
-    )
-
-    return {
-      meta: {
-        disclaimer: 'This is mock data for development',
-        terms: 'Mock terms',
-        license: 'Mock license',
-        last_updated: new Date().toISOString(),
-        results: {
-          skip: 0,
-          limit,
-          total: filteredDrugs.length
-        }
-      },
-      results: filteredDrugs
-    }
-  }
-
-  static async searchByActiveIngredient(ingredient: string, limit: number = 10): Promise<OpenFDASearchResponse> {
-    const filteredDrugs = this.mockDrugs.filter(drug => 
-      drug.active_ingredient.some(ai => 
-        ai.toLowerCase().includes(ingredient.toLowerCase())
-      ) ||
-      drug.openfda.substance_name.some(name => 
-        name.toLowerCase().includes(ingredient.toLowerCase())
-      )
-    )
-
-    return {
-      meta: {
-        disclaimer: 'This is mock data for development',
-        terms: 'Mock terms',
-        license: 'Mock license',
-        last_updated: new Date().toISOString(),
-        results: {
-          skip: 0,
-          limit,
-          total: filteredDrugs.length
-        }
-      },
-      results: filteredDrugs
-    }
-  }
-
-  // Get drug interactions
-  static async getDrugInteractions(drugName: string): Promise<string[]> {
+// EU/EMA API Service for European medications
+export class EMADrugAPIService {
+  private static async makeRequest<T>(url: string): Promise<T> {
     try {
-      const searchResponse = await this.searchDrugs(drugName, 1)
+      console.log('Making EMA API request to:', url)
       
-      if (searchResponse.results.length === 0) {
-        return []
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'MedMatch/1.0'
+        }
+      })
+      
+      if (!response.ok) {
+        console.error('EMA API response not ok:', response.status, response.statusText)
+        throw new Error(`EMA API request failed: ${response.status} ${response.statusText}`)
       }
       
-      const drug = searchResponse.results[0]
-      return drug.drug_interactions || []
+      const data = await response.json()
+      console.log('EMA API response received')
+      return data
     } catch (error) {
-      console.error('Error fetching drug interactions:', error)
+      console.error('EMA API request error:', error)
+      throw error
+    }
+  }
+
+  // Search EU medications by active ingredient
+  static async searchEUMedications(activeIngredient: string, limit: number = 10): Promise<EMADrug[]> {
+    try {
+      console.log('Searching EU medications for:', activeIngredient)
+      
+      // Try multiple search strategies for EU medications
+      const searchStrategies = [
+        // Direct API call to EMA (if available)
+        `${EMA_BASE_URL}/medicines?search=${encodeURIComponent(activeIngredient)}&limit=${limit}`,
+        // Alternative: Use WHO drug database for EU medications
+        `${WHO_BASE_URL}/api/drugs?substance=${encodeURIComponent(activeIngredient)}&region=EU&limit=${limit}`
+      ]
+
+      for (const url of searchStrategies) {
+        try {
+          const response = await this.makeRequest<any>(url)
+          if (response && response.results && response.results.length > 0) {
+            return this.convertToEMADrugs(response.results, activeIngredient)
+          }
+        } catch (error) {
+          console.error('EMA search strategy failed:', error)
+          continue
+        }
+      }
+
+      // No fallback data - return empty array
+      console.log('No EU analogues found for:', activeIngredient)
+      return []
+      
+    } catch (error) {
+      console.error('Error searching EU medications:', error)
       return []
     }
+  }
+
+  private static convertToEMADrugs(results: any[], activeIngredient: string): EMADrug[] {
+    return results.map((drug, index) => ({
+      id: `eu-${drug.name?.toLowerCase().replace(/\s+/g, '-')}-${activeIngredient.toLowerCase()}`,
+      name: drug.name || drug.brandName || 'Unknown',
+      activeIngredient: activeIngredient.toUpperCase(),
+      dosageForm: drug.dosageForm || 'Tablet',
+      strength: drug.strength || 'Unknown',
+      country: 'EU',
+      brandName: drug.brandName || drug.name,
+      genericName: drug.genericName || activeIngredient.toUpperCase(),
+      manufacturer: drug.manufacturer || 'Unknown',
+      availability: drug.availability || 'otc',
+      lastUpdated: new Date(),
+      warnings: drug.warnings || ['Consult healthcare provider'],
+      interactions: drug.interactions || [],
+      description: drug.description || 'EU medication'
+    }))
+  }
+}
+
+// Canadian Drug API Service
+export class CanadianDrugAPIService {
+  private static async makeRequest<T>(url: string): Promise<T> {
+    try {
+      console.log('Making Canadian API request to:', url)
+      
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'MedMatch/1.0'
+        }
+      })
+      
+      if (!response.ok) {
+        console.error('Canadian API response not ok:', response.status, response.statusText)
+        throw new Error(`Canadian API request failed: ${response.status} ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      console.log('Canadian API response received')
+      return data
+    } catch (error) {
+      console.error('Canadian API request error:', error)
+      throw error
+    }
+  }
+
+  // Search Canadian medications by active ingredient
+  static async searchCanadianMedications(activeIngredient: string, limit: number = 10): Promise<CanadianDrug[]> {
+    try {
+      console.log('Searching Canadian medications for:', activeIngredient)
+      
+      // Try multiple search strategies for Canadian medications
+      const searchStrategies = [
+        // Health Canada Drug Product Database
+        `${HEALTH_CANADA_BASE_URL}/products?ingredient=${encodeURIComponent(activeIngredient)}&limit=${limit}`,
+        // Alternative: Use WHO drug database for Canadian medications
+        `${WHO_BASE_URL}/api/drugs?substance=${encodeURIComponent(activeIngredient)}&region=CA&limit=${limit}`
+      ]
+
+      for (const url of searchStrategies) {
+        try {
+          const response = await this.makeRequest<any>(url)
+          if (response && response.results && response.results.length > 0) {
+            return this.convertToCanadianDrugs(response.results, activeIngredient)
+          }
+        } catch (error) {
+          console.error('Canadian search strategy failed:', error)
+          continue
+        }
+      }
+
+      // No fallback data - return empty array
+      console.log('No Canadian analogues found for:', activeIngredient)
+      return []
+      
+    } catch (error) {
+      console.error('Error searching Canadian medications:', error)
+      return []
+    }
+  }
+
+  private static convertToCanadianDrugs(results: any[], activeIngredient: string): CanadianDrug[] {
+    return results.map((drug, index) => ({
+      id: `ca-${drug.name?.toLowerCase().replace(/\s+/g, '-')}-${activeIngredient.toLowerCase()}`,
+      name: drug.name || drug.brandName || 'Unknown',
+      activeIngredient: activeIngredient.toUpperCase(),
+      dosageForm: drug.dosageForm || 'Tablet',
+      strength: drug.strength || 'Unknown',
+      country: 'Canada',
+      brandName: drug.brandName || drug.name,
+      genericName: drug.genericName || activeIngredient.toUpperCase(),
+      manufacturer: drug.manufacturer || 'Unknown',
+      availability: drug.availability || 'otc',
+      lastUpdated: new Date(),
+      warnings: drug.warnings || ['Consult healthcare provider'],
+      interactions: drug.interactions || [],
+      description: drug.description || 'Canadian medication'
+    }))
   }
 } 

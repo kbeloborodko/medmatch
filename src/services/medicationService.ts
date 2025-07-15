@@ -1,5 +1,5 @@
-import { DrugAPIService, MockDrugAPIService } from './api'
-import type { OpenFDADrug } from './api'
+import { DrugAPIService, EMADrugAPIService, CanadianDrugAPIService } from './api'
+import type { OpenFDADrug, EMADrug, CanadianDrug } from './api'
 
 export interface Medication {
   id: string
@@ -24,11 +24,11 @@ export interface SearchResult {
   confidence: number
   warnings: string[]
   apiSource: string
+  noAnaloguesFound?: boolean
+  fallbackMessage?: string
 }
 
 export class MedicationService {
-  // Use real API by default, switch to mock API for development if needed
-  private static useMockAPI = false
 
   private static convertOpenFDADrugToMedication(drug: OpenFDADrug, country: string): Medication {
     const brandName = drug.openfda.brand_name?.[0] || ''
@@ -65,7 +65,7 @@ export class MedicationService {
     destinationCountry: string
   ): Promise<SearchResult | null> {
     try {
-      const apiService = this.useMockAPI ? MockDrugAPIService : DrugAPIService
+      const apiService = DrugAPIService
 
       // Search for original medication in source country
       console.log('Searching for original medication:', query)
@@ -99,7 +99,9 @@ export class MedicationService {
             'Drug interactions and contraindications may differ',
             'Regulations and approval status vary by country'
           ],
-          apiSource: this.useMockAPI ? 'Mock Data (Development)' : 'OpenFDA API'
+          apiSource: 'OpenFDA API',
+          noAnaloguesFound: true,
+          fallbackMessage: 'Unable to identify active ingredient for analogue search. Please consult a healthcare provider for medication alternatives.'
         }
       }
 
@@ -142,20 +144,29 @@ export class MedicationService {
       console.log('Filtered analogues count:', analogues.length)
       console.log('Destination country:', destinationCountry)
 
-      // Add EU-specific analogues if destination is EU
+      // Try to get region-specific analogues from other APIs
       if (destinationCountry === 'EU') {
         console.log('Adding EU-specific analogues for', originalMedication.activeIngredient)
-        const euAnalogues = this.getEUAnalogues(originalMedication.activeIngredient)
-        console.log('EU analogues found:', euAnalogues.length)
-        analogues.push(...euAnalogues)
+        try {
+          const euAnalogues = await EMADrugAPIService.searchEUMedications(originalMedication.activeIngredient, 10)
+          console.log('EU analogues found via API:', euAnalogues.length)
+          analogues.push(...euAnalogues)
+        } catch (error) {
+          console.error('Error fetching EU analogues:', error)
+          // No fallback to hardcoded data - let it show no analogues
+        }
       }
 
-      // Add Canadian analogues if destination is Canada
       if (destinationCountry === 'Canada') {
         console.log('Adding Canadian analogues for', originalMedication.activeIngredient)
-        const canadianAnalogues = this.getCanadianAnalogues(originalMedication.activeIngredient)
-        console.log('Canadian analogues found:', canadianAnalogues.length)
-        analogues.push(...canadianAnalogues)
+        try {
+          const canadianAnalogues = await CanadianDrugAPIService.searchCanadianMedications(originalMedication.activeIngredient, 10)
+          console.log('Canadian analogues found via API:', canadianAnalogues.length)
+          analogues.push(...canadianAnalogues)
+        } catch (error) {
+          console.error('Error fetching Canadian analogues:', error)
+          // No fallback to hardcoded data - let it show no analogues
+        }
       }
 
       console.log('Final analogues count:', analogues.length)
@@ -173,13 +184,21 @@ export class MedicationService {
         'Regulations and approval status vary by country'
       ]
 
-      return {
+      // If no analogues found, add fallback message
+      const result: SearchResult = {
         originalMedication,
         analogues,
         confidence,
         warnings,
-        apiSource: this.useMockAPI ? 'Mock Data (Development)' : 'OpenFDA API'
+        apiSource: 'OpenFDA API'
       }
+
+      if (analogues.length === 0) {
+        result.noAnaloguesFound = true
+        result.fallbackMessage = `No analogues found for ${originalMedication.name} (${originalMedication.activeIngredient}) in ${destinationCountry}. This could be due to:\n\n• Different regulatory approval status\n• Different brand names or formulations\n• Limited data availability\n• Regional restrictions\n\nPlease consult a healthcare provider or pharmacist for medication alternatives.`
+      }
+
+      return result
 
     } catch (error) {
       console.error('Error searching medications:', error)
@@ -227,218 +246,10 @@ export class MedicationService {
     return results[0]
   }
 
-  // Helper method to get EU-specific analogues
-  private static getEUAnalogues(activeIngredient: string): Medication[] {
-    const ingredient = activeIngredient.toLowerCase()
-    const euAnalogues: Medication[] = []
-
-    if (ingredient.includes('ibuprofen')) {
-      euAnalogues.push(
-        {
-          id: 'eu-nurofen-ibuprofen',
-          name: 'Nurofen',
-          activeIngredient: 'IBUPROFEN',
-          dosageForm: 'Tablet',
-          strength: '200mg',
-          country: 'EU',
-          brandName: 'Nurofen',
-          genericName: 'IBUPROFEN',
-          manufacturer: 'Reckitt Benckiser',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['May cause stomach upset'],
-          interactions: ['May interact with blood thinners'],
-          description: 'Non-steroidal anti-inflammatory drug for pain relief'
-        },
-        {
-          id: 'eu-brufen-ibuprofen',
-          name: 'Brufen',
-          activeIngredient: 'IBUPROFEN',
-          dosageForm: 'Tablet',
-          strength: '400mg',
-          country: 'EU',
-          brandName: 'Brufen',
-          genericName: 'IBUPROFEN',
-          manufacturer: 'Abbott',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['May cause stomach upset'],
-          interactions: ['May interact with blood thinners'],
-          description: 'Non-steroidal anti-inflammatory drug for pain relief'
-        }
-      )
-    } else if (ingredient.includes('acetaminophen') || ingredient.includes('paracetamol')) {
-      euAnalogues.push(
-        {
-          id: 'eu-panadol-paracetamol',
-          name: 'Panadol',
-          activeIngredient: 'PARACETAMOL',
-          dosageForm: 'Tablet',
-          strength: '500mg',
-          country: 'EU',
-          brandName: 'Panadol',
-          genericName: 'PARACETAMOL',
-          manufacturer: 'GlaxoSmithKline',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['Do not exceed recommended dosage'],
-          interactions: ['Alcohol may increase liver damage'],
-          description: 'Pain reliever and fever reducer'
-        },
-        {
-          id: 'eu-calpol-paracetamol',
-          name: 'Calpol',
-          activeIngredient: 'PARACETAMOL',
-          dosageForm: 'Suspension',
-          strength: '120mg/5ml',
-          country: 'EU',
-          brandName: 'Calpol',
-          genericName: 'PARACETAMOL',
-          manufacturer: 'Johnson & Johnson',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['Do not exceed recommended dosage'],
-          interactions: ['Alcohol may increase liver damage'],
-          description: 'Pain reliever and fever reducer for children'
-        }
-      )
-    } else if (ingredient.includes('aspirin')) {
-      euAnalogues.push(
-        {
-          id: 'eu-bayer-aspirin',
-          name: 'Bayer Aspirin',
-          activeIngredient: 'ASPIRIN',
-          dosageForm: 'Tablet',
-          strength: '100mg',
-          country: 'EU',
-          brandName: 'Bayer Aspirin',
-          genericName: 'ASPIRIN',
-          manufacturer: 'Bayer',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['May cause stomach upset'],
-          interactions: ['May interact with blood thinners'],
-          description: 'Pain reliever and blood thinner'
-        }
-      )
-    }
-
-    return euAnalogues
-  }
-
-  // Helper method to get Canadian analogues
-  private static getCanadianAnalogues(activeIngredient: string): Medication[] {
-    const ingredient = activeIngredient.toLowerCase()
-    const canadianAnalogues: Medication[] = []
-
-    if (ingredient.includes('ibuprofen')) {
-      canadianAnalogues.push(
-        {
-          id: 'ca-nurofen-ibuprofen',
-          name: 'Nurofen',
-          activeIngredient: 'IBUPROFEN',
-          dosageForm: 'Tablet',
-          strength: '200mg',
-          country: 'Canada',
-          brandName: 'Nurofen',
-          genericName: 'IBUPROFEN',
-          manufacturer: 'Reckitt Benckiser',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['May cause stomach upset'],
-          interactions: ['May interact with blood thinners'],
-          description: 'Non-steroidal anti-inflammatory drug for pain relief'
-        },
-        {
-          id: 'ca-brufen-ibuprofen',
-          name: 'Brufen',
-          activeIngredient: 'IBUPROFEN',
-          dosageForm: 'Tablet',
-          strength: '400mg',
-          country: 'Canada',
-          brandName: 'Brufen',
-          genericName: 'IBUPROFEN',
-          manufacturer: 'Abbott',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['May cause stomach upset'],
-          interactions: ['May interact with blood thinners'],
-          description: 'Non-steroidal anti-inflammatory drug for pain relief'
-        }
-      )
-    } else if (ingredient.includes('acetaminophen') || ingredient.includes('paracetamol')) {
-      canadianAnalogues.push(
-        {
-          id: 'ca-panadol-paracetamol',
-          name: 'Panadol',
-          activeIngredient: 'PARACETAMOL',
-          dosageForm: 'Tablet',
-          strength: '500mg',
-          country: 'Canada',
-          brandName: 'Panadol',
-          genericName: 'PARACETAMOL',
-          manufacturer: 'GlaxoSmithKline',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['Do not exceed recommended dosage'],
-          interactions: ['Alcohol may increase liver damage'],
-          description: 'Pain reliever and fever reducer'
-        },
-        {
-          id: 'ca-calpol-paracetamol',
-          name: 'Calpol',
-          activeIngredient: 'PARACETAMOL',
-          dosageForm: 'Suspension',
-          strength: '120mg/5ml',
-          country: 'Canada',
-          brandName: 'Calpol',
-          genericName: 'PARACETAMOL',
-          manufacturer: 'Johnson & Johnson',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['Do not exceed recommended dosage'],
-          interactions: ['Alcohol may increase liver damage'],
-          description: 'Pain reliever and fever reducer for children'
-        }
-      )
-    } else if (ingredient.includes('aspirin')) {
-      canadianAnalogues.push(
-        {
-          id: 'ca-bayer-aspirin',
-          name: 'Bayer Aspirin',
-          activeIngredient: 'ASPIRIN',
-          dosageForm: 'Tablet',
-          strength: '100mg',
-          country: 'Canada',
-          brandName: 'Bayer Aspirin',
-          genericName: 'ASPIRIN',
-          manufacturer: 'Bayer',
-          availability: 'otc',
-          lastUpdated: new Date(),
-          warnings: ['May cause stomach upset'],
-          interactions: ['May interact with blood thinners'],
-          description: 'Pain reliever and blood thinner'
-        }
-      )
-    }
-
-    return canadianAnalogues
-  }
-
-  static async getDrugInteractions(drugName: string): Promise<string[]> {
-    try {
-      const apiService = this.useMockAPI ? MockDrugAPIService : DrugAPIService
-      return await apiService.getDrugInteractions(drugName)
-    } catch (error) {
-      console.error('Error fetching drug interactions:', error)
-      return []
-    }
-  }
-
   // Helper method to check if a medication is available in a country
   static async checkAvailability(medicationName: string, country: string): Promise<'otc' | 'prescription' | 'unavailable'> {
     try {
-      const apiService = this.useMockAPI ? MockDrugAPIService : DrugAPIService
+      const apiService = DrugAPIService
       const results = await apiService.searchDrugs(medicationName, 1)
       
       if (results.results.length === 0) {
@@ -454,17 +265,5 @@ export class MedicationService {
     }
   }
 
-  // Method to switch between mock and real API
-  static setUseMockAPI(useMock: boolean) {
-    this.useMockAPI = useMock
-  }
 
-  // Method to get current API status
-  static getAPIStatus() {
-    return {
-      usingMock: this.useMockAPI,
-      source: this.useMockAPI ? 'Mock Data' : 'OpenFDA API',
-      status: 'active'
-    }
-  }
 } 
