@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MedicationService, type SearchResult } from './services/medicationService'
+import { DrugAPIService, MockDrugAPIService } from './services/api'
+import { AutocompleteInput } from './components/AutocompleteInput'
 import './App.css'
 
 const COUNTRIES = [
@@ -15,6 +17,46 @@ function App() {
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [apiStatus, setApiStatus] = useState(MedicationService.getAPIStatus())
+
+  // Test API on component mount
+  useEffect(() => {
+    if (!apiStatus.usingMock) {
+      DrugAPIService.testBasicAPI()
+    }
+  }, [apiStatus.usingMock])
+
+  // Fetch suggestions from the API (brand, generic, substance names)
+  const fetchSuggestions = async (query: string): Promise<string[]> => {
+    const apiService = apiStatus.usingMock ? MockDrugAPIService : DrugAPIService
+    try {
+      const response = await apiService.searchDrugs(query, 7)
+      // Collect unique names from brand, generic, and substance
+      const namesMap = new Map<string, string>() // lowercase -> original
+      response.results.forEach(drug => {
+        drug.openfda.brand_name?.forEach(name => {
+          const lowerName = name.toLowerCase()
+          if (!namesMap.has(lowerName)) {
+            namesMap.set(lowerName, name)
+          }
+        })
+        drug.openfda.generic_name?.forEach(name => {
+          const lowerName = name.toLowerCase()
+          if (!namesMap.has(lowerName)) {
+            namesMap.set(lowerName, name)
+          }
+        })
+        drug.openfda.substance_name?.forEach(name => {
+          const lowerName = name.toLowerCase()
+          if (!namesMap.has(lowerName)) {
+            namesMap.set(lowerName, name)
+          }
+        })
+      })
+      return Array.from(namesMap.values())
+    } catch {
+      return []
+    }
+  }
 
   const searchMedications = async () => {
     if (!searchTerm.trim()) return
@@ -36,6 +78,10 @@ function App() {
     } finally {
       setIsSearching(false)
     }
+  }
+
+  const handleAutocompleteSelect = (value: string) => {
+    setSearchTerm(value)
   }
 
   const toggleAPI = () => {
@@ -101,13 +147,13 @@ function App() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Medication Name
               </label>
-              <input
-                type="text"
+              <AutocompleteInput
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && searchMedications()}
+                onChange={setSearchTerm}
+                onSelect={handleAutocompleteSelect}
+                fetchSuggestions={fetchSuggestions}
                 placeholder="Enter medication name (e.g., Tylenol, Advil)"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700 placeholder-gray-500"
+                disabled={isSearching}
               />
             </div>
             

@@ -27,8 +27,8 @@ export interface SearchResult {
 }
 
 export class MedicationService {
-  // Use mock service for development, switch to real API in production
-  private static useMockAPI = true
+  // Use real API by default, switch to mock API for development if needed
+  private static useMockAPI = false
 
   private static convertOpenFDADrugToMedication(drug: OpenFDADrug, country: string): Medication {
     const brandName = drug.openfda.brand_name?.[0] || ''
@@ -65,9 +65,12 @@ export class MedicationService {
       const apiService = this.useMockAPI ? MockDrugAPIService : DrugAPIService
 
       // Search for original medication in source country
+      console.log('Searching for original medication:', query)
       const sourceResults = await apiService.searchDrugs(query, 5)
+      console.log('Source results found:', sourceResults.results.length)
       
       if (sourceResults.results.length === 0) {
+        console.log('No source medication found')
         return null
       }
 
@@ -76,7 +79,24 @@ export class MedicationService {
 
       // Search for analogues by active ingredient in destination country
       const activeIngredient = originalMedication.activeIngredient
-      const analogueResults = await apiService.searchByActiveIngredient(activeIngredient, 10)
+      console.log('Searching for analogues with active ingredient:', activeIngredient)
+      
+      // Try multiple search strategies
+      let analogueResults = await apiService.searchByActiveIngredient(activeIngredient, 10)
+      
+      // If no results, try searching by generic name
+      if (analogueResults.results.length === 0 && originalMedication.genericName) {
+        console.log('No results with active ingredient, trying generic name:', originalMedication.genericName)
+        analogueResults = await apiService.searchDrugs(originalMedication.genericName, 10)
+      }
+      
+      // If still no results, try searching by substance name
+      if (analogueResults.results.length === 0) {
+        console.log('No results with generic name, trying substance name search')
+        analogueResults = await apiService.searchDrugs(activeIngredient, 10)
+      }
+      
+      console.log('Found analogue results:', analogueResults.results.length)
       
       const analogues = analogueResults.results
         .filter(drug => {
