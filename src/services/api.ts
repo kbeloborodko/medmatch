@@ -10,7 +10,8 @@ export interface OpenFDADrug {
     dosage_form: string[]
     route: string[]
   }
-  active_ingredients: Array<{
+  active_ingredient: string[]
+  active_ingredients?: Array<{
     name: string
     strength: string
   }>
@@ -68,11 +69,8 @@ export class DrugAPIService {
     for (let i = 0; i < searchVariations.length; i++) {
       try {
         const searchQuery = searchVariations[i]
-        const params = new URLSearchParams()
-        params.append('search', searchQuery)
-        params.append('limit', limit.toString())
-        
-        const fullUrl = `${baseUrl}?${params.toString()}`
+        // Manually construct the URL to avoid encoding issues with : and +
+        const fullUrl = `${baseUrl}?search=${encodeURIComponent(searchQuery)}&limit=${limit}`
         console.log(`Trying search variation ${i + 1}:`, fullUrl)
         
         const response = await this.makeRequest<OpenFDASearchResponse>(fullUrl)
@@ -109,40 +107,35 @@ export class DrugAPIService {
   private static generateSearchVariations(query: string): string[] {
     const variations: string[] = []
     const cleanQuery = query.trim()
-    
-    if (cleanQuery.length < 2) return [cleanQuery]
-    
-    // Strategy 1: Exact field search
-    variations.push(`openfda.generic_name:${cleanQuery}+OR+openfda.brand_name:${cleanQuery}+OR+openfda.substance_name:${cleanQuery}`)
-    
-    // Strategy 2: Generic search
-    variations.push(cleanQuery)
-    
-    // Strategy 3: Uppercase search
-    variations.push(`openfda.generic_name:${cleanQuery.toUpperCase()}+OR+openfda.brand_name:${cleanQuery.toUpperCase()}+OR+openfda.substance_name:${cleanQuery.toUpperCase()}`)
-    
-    // Strategy 4: Try shorter prefixes for better partial matching
-    if (cleanQuery.length > 3) {
-      const prefix3 = cleanQuery.substring(0, 3)
-      variations.push(`openfda.generic_name:${prefix3}+OR+openfda.brand_name:${prefix3}+OR+openfda.substance_name:${prefix3}`)
-    }
-    
-    if (cleanQuery.length > 4) {
-      const prefix4 = cleanQuery.substring(0, 4)
-      variations.push(`openfda.generic_name:${prefix4}+OR+openfda.brand_name:${prefix4}+OR+openfda.substance_name:${prefix4}`)
-    }
-    
-    // Strategy 5: Try common medication name patterns
-    if (cleanQuery.toLowerCase().includes('ibu')) {
+    if (cleanQuery.length < 3) return []
+
+    // First, try exact matches for common medications
+    const lowerQuery = cleanQuery.toLowerCase()
+    if (lowerQuery.includes('ibuprofen') || lowerQuery.includes('ibu')) {
       variations.push('openfda.generic_name:IBUPROFEN')
     }
-    if (cleanQuery.toLowerCase().includes('ace') || cleanQuery.toLowerCase().includes('tyl')) {
+    if (lowerQuery.includes('acetaminophen') || lowerQuery.includes('tylenol') || lowerQuery.includes('ace') || lowerQuery.includes('tyl')) {
       variations.push('openfda.generic_name:ACETAMINOPHEN')
     }
-    if (cleanQuery.toLowerCase().includes('asp')) {
+    if (lowerQuery.includes('aspirin') || lowerQuery.includes('asp')) {
       variations.push('openfda.generic_name:ASPIRIN')
     }
-    
+
+    // Then try exact matches for the full query
+    variations.push(`openfda.generic_name:${cleanQuery.toUpperCase()}`)
+    variations.push(`openfda.brand_name:${cleanQuery}`)
+    variations.push(`openfda.substance_name:${cleanQuery.toUpperCase()}`)
+
+    // Finally, try partial matches (but with higher minimum length to avoid too many false positives)
+    if (cleanQuery.length >= 4) {
+      for (let len = 4; len <= cleanQuery.length; len++) {
+        const prefix = cleanQuery.substring(0, len)
+        variations.push(`openfda.generic_name:${prefix}`)
+        variations.push(`openfda.brand_name:${prefix}`)
+        variations.push(`openfda.substance_name:${prefix}`)
+      }
+    }
+
     return variations
   }
 
@@ -167,7 +160,7 @@ export class DrugAPIService {
     // More flexible search that includes partial matches
     const baseUrl = `${OPENFDA_BASE_URL}/drug/label.json`
     const params = new URLSearchParams()
-    params.append('search', `active_ingredients.name:${ingredient}+OR+openfda.substance_name:${ingredient}+OR+openfda.generic_name:${ingredient}`)
+    params.append('search', `active_ingredient:${ingredient}+OR+openfda.substance_name:${ingredient}+OR+openfda.generic_name:${ingredient}`)
     params.append('limit', limit.toString())
     const url = `${baseUrl}?${params.toString()}`
     
@@ -253,6 +246,7 @@ export class MockDrugAPIService {
         dosage_form: ['TABLET'],
         route: ['ORAL']
       },
+      active_ingredient: ['ACETAMINOPHEN'],
       active_ingredients: [{ name: 'ACETAMINOPHEN', strength: '500 MG' }],
       drug_interactions: ['Alcohol may increase liver damage'],
       warnings: ['Do not exceed recommended dosage'],
@@ -268,6 +262,7 @@ export class MockDrugAPIService {
         dosage_form: ['TABLET'],
         route: ['ORAL']
       },
+      active_ingredient: ['IBUPROFEN'],
       active_ingredients: [{ name: 'IBUPROFEN', strength: '200 MG' }],
       drug_interactions: ['May interact with blood thinners'],
       warnings: ['May cause stomach upset'],
@@ -283,6 +278,7 @@ export class MockDrugAPIService {
         dosage_form: ['TABLET'],
         route: ['ORAL']
       },
+      active_ingredient: ['ACETAMINOPHEN'],
       active_ingredients: [{ name: 'ACETAMINOPHEN', strength: '500 MG' }],
       drug_interactions: ['Alcohol may increase liver damage'],
       warnings: ['Do not exceed recommended dosage'],
@@ -322,8 +318,8 @@ export class MockDrugAPIService {
 
   static async searchByActiveIngredient(ingredient: string, limit: number = 10): Promise<OpenFDASearchResponse> {
     const filteredDrugs = this.mockDrugs.filter(drug => 
-      drug.active_ingredients.some(ai => 
-        ai.name.toLowerCase().includes(ingredient.toLowerCase())
+      drug.active_ingredient.some(ai => 
+        ai.toLowerCase().includes(ingredient.toLowerCase())
       ) ||
       drug.openfda.substance_name.some(name => 
         name.toLowerCase().includes(ingredient.toLowerCase())

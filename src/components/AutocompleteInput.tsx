@@ -28,7 +28,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!value) {
+    if (!value || value.length < 3) {
       setSuggestions([])
       setShowSuggestions(false)
       return

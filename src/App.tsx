@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { MedicationService, type SearchResult } from './services/medicationService'
-import { DrugAPIService, MockDrugAPIService } from './services/api'
+import { DrugAPIService } from './services/api'
 import { AutocompleteInput } from './components/AutocompleteInput'
+import { AnaloguesTable } from './components/AnaloguesTable'
 import './App.css'
 
 const COUNTRIES = [
@@ -10,26 +11,22 @@ const COUNTRIES = [
   { code: 'CA', name: 'Canada' }
 ]
 
+// Helper function to determine if we should show cross-country analogues
+const shouldShowCrossCountryAnalogues = (sourceCountry: string, destinationCountry: string) => {
+  return sourceCountry !== destinationCountry
+}
+
 function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [sourceCountry, setSourceCountry] = useState('US')
   const [destinationCountry, setDestinationCountry] = useState('EU')
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null)
   const [isSearching, setIsSearching] = useState(false)
-  const [apiStatus, setApiStatus] = useState(MedicationService.getAPIStatus())
-
-  // Test API on component mount
-  useEffect(() => {
-    if (!apiStatus.usingMock) {
-      DrugAPIService.testBasicAPI()
-    }
-  }, [apiStatus.usingMock])
 
   // Fetch suggestions from the API (brand, generic, substance names)
   const fetchSuggestions = async (query: string): Promise<string[]> => {
-    const apiService = apiStatus.usingMock ? MockDrugAPIService : DrugAPIService
     try {
-      const response = await apiService.searchDrugs(query, 7)
+      const response = await DrugAPIService.searchDrugs(query, 7)
       // Collect unique names from brand, generic, and substance
       const namesMap = new Map<string, string>() // lowercase -> original
       response.results.forEach(drug => {
@@ -84,12 +81,6 @@ function App() {
     setSearchTerm(value)
   }
 
-  const toggleAPI = () => {
-    const newUseMock = !apiStatus.usingMock
-    MedicationService.setUseMockAPI(newUseMock)
-    setApiStatus(MedicationService.getAPIStatus())
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-gray-50 to-blue-100 py-8 px-4">
       <div className="max-w-4xl mx-auto">
@@ -99,24 +90,6 @@ function App() {
         <p className="text-center text-gray-600 mb-8">
           Find equivalent medications when traveling abroad
         </p>
-        
-        {/* API Status */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${apiStatus.usingMock ? 'bg-yellow-400' : 'bg-green-400'}`}></div>
-              <span className="text-sm text-gray-600">
-                API: {apiStatus.source} ({apiStatus.status})
-              </span>
-            </div>
-            <button
-              onClick={toggleAPI}
-              className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-            >
-              Switch to {apiStatus.usingMock ? 'Real API' : 'Mock Data'}
-            </button>
-          </div>
-        </div>
         
         {/* Safety Disclaimer */}
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
@@ -219,90 +192,53 @@ function App() {
               </div>
             </div>
 
-            {/* Original Medication */}
-            <div className="p-6 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-lg font-medium text-gray-800 mb-3">
-                Original Medication ({sourceCountry})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Name</p>
-                  <p className="font-medium">{searchResults.originalMedication.name}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Active Ingredient</p>
-                  <p className="font-medium">{searchResults.originalMedication.activeIngredient}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Dosage Form</p>
-                  <p className="font-medium">{searchResults.originalMedication.dosageForm}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Strength</p>
-                  <p className="font-medium">{searchResults.originalMedication.strength}</p>
-                </div>
-                {searchResults.originalMedication.description && (
-                  <div className="md:col-span-2">
-                    <p className="text-sm text-gray-600">Description</p>
-                    <p className="font-medium">{searchResults.originalMedication.description}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Analogues */}
-            <div className="p-6">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">
-                Available Analogues ({destinationCountry})
-              </h3>
-              
-              {searchResults.analogues.length > 0 ? (
-                <div className="space-y-4">
-                  {searchResults.analogues.map((analogue, index) => (
-                    <div key={analogue.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-600">Brand Name</p>
-                          <p className="font-medium">{analogue.brandName || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Generic Name</p>
-                          <p className="font-medium">{analogue.genericName || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Manufacturer</p>
-                          <p className="font-medium">{analogue.manufacturer}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Dosage Form</p>
-                          <p className="font-medium">{analogue.dosageForm}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Strength</p>
-                          <p className="font-medium">{analogue.strength}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Availability</p>
-                          <p className="font-medium capitalize">{analogue.availability}</p>
-                        </div>
-                        {analogue.description && (
-                          <div className="md:col-span-3">
-                            <p className="text-sm text-gray-600">Description</p>
-                            <p className="font-medium">{analogue.description}</p>
-                          </div>
-                        )}
-                      </div>
+            {/* Main Content - Side by Side Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6">
+              {/* Original Medication - Compact Sidebar */}
+              <div className="lg:col-span-1">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-800 mb-3">
+                    Original ({sourceCountry})
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Name</p>
+                      <p className="text-sm font-medium text-gray-900">{searchResults.originalMedication.name}</p>
                     </div>
-                  ))}
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Active Ingredient</p>
+                      <p className="text-sm font-medium text-gray-900">{searchResults.originalMedication.activeIngredient}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Dosage Form</p>
+                      <p className="text-sm font-medium text-gray-900">{searchResults.originalMedication.dosageForm}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Strength</p>
+                      <p className="text-sm font-medium text-gray-900">{searchResults.originalMedication.strength}</p>
+                    </div>
+                    {searchResults.originalMedication.description && (
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">Description</p>
+                        <p className="text-sm text-gray-700">{searchResults.originalMedication.description}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">No analogues found for this medication.</p>
-                  <p className="text-sm text-gray-400 mt-2">
-                    Try searching for the generic name or active ingredient.
-                  </p>
-                </div>
-              )}
+              </div>
+
+              {/* Analogues - Main Content Area */}
+              <div className="lg:col-span-3">
+                <h3 className="text-lg font-medium text-gray-800 mb-4">
+                  Available Analogues ({destinationCountry})
+                </h3>
+                
+                <AnaloguesTable 
+                  analogues={searchResults.analogues}
+                  destinationCountry={destinationCountry}
+                  sourceCountry={sourceCountry}
+                />
+              </div>
             </div>
 
             {/* Warnings */}
