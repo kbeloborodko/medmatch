@@ -13,7 +13,7 @@ interface SuggestionItem {
 interface AutocompleteInputProps {
   value: string
   onChange: (value: string) => void
-  onSelect: (value: string) => void
+  onSelect: (value: string, suggestion?: SuggestionItem) => void
   fetchSuggestions: (query: string) => Promise<SuggestionItem[]>
   placeholder?: string
   disabled?: boolean
@@ -96,7 +96,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
     } else if (e.key === 'Enter') {
       if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
         justSelectedRef.current = true
-        onSelect(suggestions[highlightedIndex].name)
+        onSelect(suggestions[highlightedIndex].name, suggestions[highlightedIndex])
         setShowSuggestions(false)
       }
     } else if (e.key === 'Escape') {
@@ -111,7 +111,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
       blurTimeoutRef.current = null
     }
     justSelectedRef.current = true
-    onSelect(suggestion.name)
+    onSelect(suggestion.name, suggestion)
     setShowSuggestions(false)
     setHighlightedIndex(-1)
   }

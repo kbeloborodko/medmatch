@@ -449,7 +449,7 @@ export interface SuggestionItem {
 export class LocalMedicationService {
   
   // Search for autocomplete suggestions
-  static async searchAutocompleteSuggestions(query: string, limit: number = 10): Promise<SuggestionItem[]> {
+  static searchAutocompleteSuggestions(query: string, limit: number = 10): SuggestionItem[] {
     try {
       console.log('Searching local database for:', query)
       
@@ -513,7 +513,7 @@ export class LocalMedicationService {
   }
 
   // Search for original medication
-  static async findOriginalMedication(query: string): Promise<LocalDrug | null> {
+  static findOriginalMedication(query: string): LocalDrug | null {
     try {
       console.log('Finding original medication for:', query)
       
@@ -538,7 +538,7 @@ export class LocalMedicationService {
   }
 
   // Search for analogues by active ingredient
-  static async searchAnalogues(activeIngredient: string, destinationCountry: string, limit: number = 10): Promise<LocalDrug[]> {
+  static searchAnalogues(activeIngredient: string, destinationCountry: string, limit: number = 10): LocalDrug[] {
     try {
       console.log('Searching analogues for:', activeIngredient, 'in', destinationCountry)
       
@@ -557,7 +557,7 @@ export class LocalMedicationService {
   }
 
   // Get related medications by analogue IDs
-  static async getRelatedMedications(analogueIds: string[], limit: number = 10): Promise<LocalDrug[]> {
+  static getRelatedMedications(analogueIds: string[], limit: number = 10): LocalDrug[] {
     try {
       console.log('Getting related medications for:', analogueIds)
       
@@ -574,7 +574,7 @@ export class LocalMedicationService {
   }
 
   // Test service connectivity
-  static async testService(): Promise<boolean> {
+  static testService(): boolean {
     try {
       console.log('Testing local medication service...')
       return POPULAR_OTC_MEDICATIONS.length > 0

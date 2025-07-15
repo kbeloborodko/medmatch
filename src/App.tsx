@@ -9,12 +9,13 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const [isNewSearch, setIsNewSearch] = useState(false)
 
   // Fetch suggestions using LocalMedicationService
   const fetchSuggestions = async (query: string): Promise<SuggestionItem[]> => {
     try {
       console.log('Fetching suggestions from LocalMedicationService')
-      const suggestions = await LocalMedicationService.searchAutocompleteSuggestions(query, 10)
+      const suggestions = LocalMedicationService.searchAutocompleteSuggestions(query, 10)
       console.log('LocalMedicationService suggestions found:', suggestions.length)
       return suggestions
     } catch (error) {
@@ -23,75 +24,104 @@ function App() {
     }
   }
 
-  const searchMedications = async (medicationName: string) => {
-    if (!medicationName.trim()) return
+  const handleAutocompleteSelect = (value: string, suggestion?: SuggestionItem) => {
+    setSearchTerm(value)
+    setIsNewSearch(false)
+    if (suggestion) {
+      searchMedicationsWithSuggestion(suggestion)
+    } else {
+      searchMedications(value)
+    }
+  }
 
+  const handleSearchInputChange = (value: string) => {
+    // If user is typing and we have search results, clear them and start fresh
+    if (searchResults && !isNewSearch) {
+      setSearchResults(null)
+      setIsNewSearch(true)
+    }
+    setSearchTerm(value)
+  }
+
+  const handleClearSearch = () => {
+    setSearchTerm('')
+    setSearchResults(null)
+    setIsNewSearch(false)
+  }
+
+  const searchMedicationsWithSuggestion = (suggestion: SuggestionItem) => {
     setIsSearching(true)
     setSearchResults(null)
-    
     try {
-      // Find the selected medication to determine its country
-      const selectedMedication = await LocalMedicationService.findOriginalMedication(medicationName)
+      // Debug: check what methods are available
+      console.log('MedicationService methods:', Object.getOwnPropertyNames(MedicationService))
+      console.log('searchMedications exists:', typeof MedicationService.searchMedications)
       
-      if (!selectedMedication) {
+      // First, find the original medication to get its analogue list
+      const originalMedication = LocalMedicationService.findOriginalMedication(suggestion.name)
+      if (!originalMedication) {
         setSearchResults(null)
         return
       }
-
-      const sourceCountry = selectedMedication.country
       
-      // Get analogues from the other two countries
-      const allAnalogues: SearchResult['analogues'] = []
+      console.log('Original medication found:', originalMedication)
+      console.log('Original medication analogues:', originalMedication.analogues)
       
-      const countries = ['US', 'EU', 'CA'].filter(country => country !== sourceCountry)
+      const sourceCountry = suggestion.country
+      const destinationCountries = ['US', 'EU', 'CA'].filter(country => country !== sourceCountry)
       
-      for (const destinationCountry of countries) {
-        const analogues = await LocalMedicationService.searchAnalogues(
-          selectedMedication.activeIngredient, 
-          destinationCountry, 
-          10
+      let allAnalogues: any[] = []
+      
+      // Get related medications from the analogue list
+      if (originalMedication.analogues && originalMedication.analogues.length > 0) {
+        const relatedMedications = LocalMedicationService.getRelatedMedications(originalMedication.analogues, 15)
+        console.log('Related medications found:', relatedMedications)
+        
+        // Filter to only include medications from other countries
+        const otherCountryMedications = relatedMedications.filter(drug => 
+          destinationCountries.includes(drug.country)
         )
         
-        // Convert to medication format
-        const convertedAnalogues = analogues
-          .filter(drug => drug.id !== selectedMedication.id)
-          .map(drug => ({
-            id: drug.id,
-            name: drug.name,
-            activeIngredient: drug.activeIngredient,
-            dosageForm: drug.dosageForm,
-            strength: drug.strength,
-            country: drug.country,
-            brandName: drug.brandName,
-            genericName: drug.genericName,
-            manufacturer: drug.manufacturer,
-            availability: drug.availability,
-            lastUpdated: drug.lastUpdated,
-            warnings: drug.warnings,
-            interactions: drug.interactions,
-            description: drug.description
-          }))
+        console.log('Other country medications:', otherCountryMedications)
         
-        allAnalogues.push(...convertedAnalogues)
+        // Convert to the expected format
+        allAnalogues = otherCountryMedications.map(drug => ({
+          id: drug.id,
+          name: drug.name,
+          activeIngredient: drug.activeIngredient,
+          dosageForm: drug.dosageForm,
+          strength: drug.strength,
+          country: drug.country,
+          brandName: drug.brandName,
+          genericName: drug.genericName,
+          manufacturer: drug.manufacturer,
+          availability: drug.availability,
+          lastUpdated: drug.lastUpdated,
+          warnings: drug.warnings,
+          interactions: drug.interactions,
+          description: drug.description
+        }))
       }
       
-      // Create search result
-      const result: SearchResult = {
+      console.log('Final analogues:', allAnalogues)
+      
+      // Create a combined result
+      const combinedResult = {
         originalMedication: {
-          id: selectedMedication.id,
-          name: selectedMedication.name,
-          activeIngredient: selectedMedication.activeIngredient,
-          dosageForm: selectedMedication.dosageForm,
-          strength: selectedMedication.strength,
-          country: selectedMedication.country,
-          brandName: selectedMedication.brandName,
-          genericName: selectedMedication.genericName,
-          manufacturer: selectedMedication.manufacturer,
-          availability: selectedMedication.availability,
-          lastUpdated: selectedMedication.lastUpdated,
-          warnings: selectedMedication.warnings,
-          interactions: selectedMedication.interactions,
-          description: selectedMedication.description
+          id: originalMedication.id,
+          name: originalMedication.name,
+          activeIngredient: originalMedication.activeIngredient,
+          dosageForm: originalMedication.dosageForm,
+          strength: originalMedication.strength,
+          country: sourceCountry,
+          brandName: originalMedication.brandName,
+          genericName: originalMedication.genericName,
+          manufacturer: originalMedication.manufacturer,
+          availability: originalMedication.availability,
+          lastUpdated: originalMedication.lastUpdated,
+          warnings: originalMedication.warnings,
+          interactions: originalMedication.interactions,
+          description: originalMedication.description
         },
         analogues: allAnalogues,
         confidence: allAnalogues.length > 0 ? 0.9 : 0.3,
@@ -103,15 +133,20 @@ function App() {
           'Drug interactions and contraindications may differ',
           'Regulations and approval status vary by country'
         ],
-        apiSource: 'Local Medication Database'
-      }
-
-      if (allAnalogues.length === 0) {
-        result.noAnaloguesFound = true
-        result.fallbackMessage = `No analogues found for ${selectedMedication.name} (${selectedMedication.activeIngredient}) in other countries. This could be due to:\n\n• Different regulatory approval status\n• Different brand names or formulations\n• Limited data availability\n• Regional restrictions\n\nPlease consult a healthcare provider or pharmacist for medication alternatives.`
+        apiSource: 'Local Medication Database',
+        noAnaloguesFound: allAnalogues.length === 0,
+        fallbackMessage: allAnalogues.length === 0 ? `No analogues found for ${suggestion.name} in other countries.` : undefined
       }
       
-      setSearchResults(result)
+      console.log('Combined search result:', combinedResult)
+      
+      if (combinedResult.analogues.length > 0) {
+        console.log('Setting search results:', combinedResult)
+        setSearchResults(combinedResult)
+      } else {
+        console.log('No analogues found')
+        setSearchResults(combinedResult)
+      }
     } catch (error) {
       console.error('Search error:', error)
       setSearchResults(null)
@@ -120,9 +155,64 @@ function App() {
     }
   }
 
-  const handleAutocompleteSelect = (value: string) => {
-    setSearchTerm(value)
-    searchMedications(value)
+  const searchMedications = (medicationName: string) => {
+    if (!medicationName.trim()) return
+    setIsSearching(true)
+    setSearchResults(null)
+    try {
+      // Find the original medication first to get its country
+      const selectedMedication = LocalMedicationService.findOriginalMedication(medicationName)
+      if (!selectedMedication) {
+        setSearchResults(null)
+        return
+      }
+      
+      // Use the searchMedicationsInAllCountries method
+      const result = MedicationService.searchMedicationsInAllCountries(
+        medicationName,
+        selectedMedication.country
+      )
+      
+      if (result) {
+        setSearchResults(result)
+      } else {
+        setSearchResults(null)
+      }
+    } catch (error) {
+      console.error('Search error:', error)
+      setSearchResults(null)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  // Format the search term to show selected medication info
+  const getDisplayValue = () => {
+    if (!searchResults?.originalMedication || isNewSearch) {
+      return searchTerm
+    }
+    
+    const med = searchResults.originalMedication
+    const countryFlag = {
+      'US': '🇺🇸',
+      'EU': '🇪🇺', 
+      'CA': '🇨🇦'
+    }[med.country] || med.country
+    
+    let displayValue = `${med.name}`
+    
+    if (med.brandName && med.brandName !== med.name) {
+      displayValue += ` (${med.brandName})`
+    }
+    
+    displayValue += ` - ${med.strength} ${med.dosageForm}`
+    displayValue += ` - ${countryFlag} ${med.country}`
+    
+    if (med.manufacturer && med.manufacturer !== 'Various') {
+      displayValue += ` - ${med.manufacturer}`
+    }
+    
+    return displayValue
   }
 
   return (
@@ -145,14 +235,27 @@ function App() {
               <label htmlFor="medication-search" className="block text-sm font-medium text-gray-700 mb-2">
                 Search for a medication
               </label>
-              <AutocompleteInput
-                value={searchTerm}
-                onChange={setSearchTerm}
-                onSelect={handleAutocompleteSelect}
-                fetchSuggestions={fetchSuggestions}
-                placeholder="Enter medication name, brand, or active ingredient..."
-                disabled={isSearching}
-              />
+              <div className="relative">
+                <AutocompleteInput
+                  value={getDisplayValue()}
+                  onChange={handleSearchInputChange}
+                  onSelect={handleAutocompleteSelect}
+                  fetchSuggestions={fetchSuggestions}
+                  placeholder="Enter medication name, brand, or active ingredient..."
+                  disabled={isSearching}
+                />
+                {searchResults && (
+                  <button
+                    onClick={handleClearSearch}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Clear search"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             {isSearching && (
@@ -164,57 +267,21 @@ function App() {
           </div>
 
           {/* Results Section */}
-          {searchResults && (
+          {searchResults && searchResults.originalMedication && (
             <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                {/* Original Medication */}
-                <div className="lg:col-span-1">
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <h3 className="text-lg font-semibold text-blue-900 mb-2">
-                      Selected Medication
-                    </h3>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="font-medium text-gray-700">Name:</span>
-                        <span className="ml-2 text-gray-900">{searchResults.originalMedication.name}</span>
-                      </div>
-                      {searchResults.originalMedication.brandName && (
-                        <div>
-                          <span className="font-medium text-gray-700">Brand:</span>
-                          <span className="ml-2 text-gray-900">{searchResults.originalMedication.brandName}</span>
-                        </div>
-                      )}
-                      <div>
-                        <span className="font-medium text-gray-700">Active Ingredient:</span>
-                        <span className="ml-2 text-gray-900">{searchResults.originalMedication.activeIngredient}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-700">Country:</span>
-                        <span className="ml-2 text-gray-900">{searchResults.originalMedication.country}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-700">Dosage:</span>
-                        <span className="ml-2 text-gray-900">{searchResults.originalMedication.strength} {searchResults.originalMedication.dosageForm}</span>
-                      </div>
-                    </div>
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  Analogues in Other Countries
+                </h3>
+                {searchResults.noAnaloguesFound ? (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-yellow-800 whitespace-pre-line">
+                      {searchResults.fallbackMessage}
+                    </p>
                   </div>
-                </div>
-
-                {/* Analogues Table */}
-                <div className="lg:col-span-3">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Analogues in Other Countries
-                  </h3>
-                  {searchResults.noAnaloguesFound ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                      <p className="text-yellow-800 whitespace-pre-line">
-                        {searchResults.fallbackMessage}
-                      </p>
-                    </div>
-                  ) : (
-                    <AnaloguesTable analogues={searchResults.analogues} />
-                  )}
-                </div>
+                ) : (
+                  <AnaloguesTable analogues={searchResults.analogues} />
+                )}
               </div>
 
               {/* Warnings */}
